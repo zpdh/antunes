@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>antunes - notes.md</title>
+		<style>
+			:root {
+				--bg: #f2e8d5;
+				--fg: #3a2e24;
+				--muted: #8a7a68;
+				--accent: #8a5326;
+				--rule: #d4c3a6;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root:not([data-theme="light"]) {
+					--bg: #2a221b;
+					--fg: #e8dcc6;
+					--muted: #9c8b76;
+					--accent: #d49a5c;
+					--rule: #4a3d30;
+				}
+			}
+			:root[data-theme="dark"] {
+				--bg: #2a221b;
+				--fg: #e8dcc6;
+				--muted: #9c8b76;
+				--accent: #d49a5c;
+				--rule: #4a3d30;
+			}
+			body {
+				margin: 0;
+				background: var(--bg);
+				color: var(--fg);
+				font-family:
+					"IBM Plex Mono", "SFMono-Regular", Menlo, Consolas,
+					"Courier New", monospace;
+				font-size: 15px;
+				line-height: 1.75;
+			}
+			main {
+				max-width: 64ch;
+				margin: 0 auto;
+				padding: 2.5rem 1.25rem 4rem;
+			}
+			a {
+				color: var(--accent);
+				text-decoration: none;
+				cursor: pointer;
+			}
+			a:hover {
+				text-decoration: underline;
+			}
+			nav {
+				display: flex;
+				gap: 1.25rem;
+				flex-wrap: wrap;
+				border-bottom: 2px solid var(--rule);
+				padding-bottom: 0.75rem;
+				margin-bottom: 2rem;
+			}
+			nav .brand {
+				font-weight: 600;
+				margin-right: auto;
+				color: var(--fg);
+			}
+			pre {
+				white-space: pre-wrap;
+				word-wrap: break-word;
+				margin: 0;
+				font: inherit;
+			}
+			ul {
+				list-style: none;
+				padding: 0;
+				margin: 1.5rem 0;
+			}
+			li {
+				margin: 0.4em 0;
+			}
+			.meta {
+				color: var(--muted);
+			}
+			footer {
+				margin-top: 3rem;
+				color: var(--muted);
+				border-top: 2px solid var(--rule);
+				padding-top: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<nav>
+				<a class="brand" href="#/">~/notes.md</a>
+				<a href="#/">[posts]</a>
+				<a href="#/about-me">[about-me]</a>
+				<a id="theme">[theme]</a>
+			</nav>
+			<div id="view"></div>
+			<footer></footer>
+		</main>
+		<script>
+			var view = document.getElementById("view");
+			var esc = function (s) {
+				return s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+			};
+			// Show raw markdown, but make [text](https://...) links clickable
+			var raw = function (s) {
+				return esc(s).replace(
+					/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+					'<a href="$2" target="_blank" rel="noopener">[$1]($2)</a>',
+				);
+			};
+			var get = function (url) {
+				return fetch(url).then(function (r) {
+					if (!r.ok) throw 0;
+					return r.text();
+				});
+			};
+
+			function meta(text) {
+				var m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/),
+					o = {};
+				if (m)
+					m[1].split(/\r?\n/).forEach(function (l) {
+						var i = l.indexOf(":");
+						if (i > 0)
+							o[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+					});
+				return o;
+			}
+
+			function home() {
+				view.innerHTML = "<pre><b># Posts</b></pre>";
+				get("posts/posts.json")
+					.then(function (t) {
+						return Promise.all(
+							JSON.parse(t).map(function (f) {
+								return get("posts/" + f).then(function (txt) {
+									var m = meta(txt);
+									return {
+										slug: f.replace(/\.md$/, ""),
+										title: m.title || f,
+										date: m.date || "",
+									};
+								});
+							}),
+						);
+					})
+					.then(function (list) {
+						list.sort(function (a, b) {
+							return b.date.localeCompare(a.date);
+						});
+						view.innerHTML +=
+							"<ul>" +
+							list
+								.map(function (p) {
+									return (
+										'<li><span class="meta">' +
+										esc(p.date) +
+										' -</span> <a href="#/' +
+										p.slug +
+										'">[' +
+										esc(p.title) +
+										"]</a></li>"
+									);
+								})
+								.join("") +
+							"</ul>";
+					})
+					.catch(function () {
+						view.innerHTML +=
+							"<pre>\nCould not load posts/posts.json.\n";
+					});
+			}
+
+			function page(file, slug) {
+				get(file)
+					.then(function (t) {
+						document.title =
+							(meta(t).title || slug) + " | antunes";
+						view.innerHTML =
+							"<pre>" +
+							raw(t) +
+							'</pre><p><a href="#/">&lt;- back</a></p>';
+					})
+					.catch(function () {
+						view.innerHTML =
+							"<pre># 404\n\nNo such file: " +
+							esc(file) +
+							'</pre><p><a href="#/">&lt;- back</a></p>';
+					});
+			}
+
+			function route() {
+				var h = location.hash
+					.replace(/^#\/?/, "")
+					.replace(/[^\w-]/g, "");
+				window.scrollTo(0, 0);
+				document.title = "Antunes - notes.md";
+				if (!h) return home();
+				page(h === "about-me" ? "about-me.md" : "posts/" + h + ".md", h);
+			}
+
+			document.getElementById("theme").onclick = function () {
+				var r = document.documentElement,
+					d =
+						getComputedStyle(r).getPropertyValue("--bg").trim() ===
+						"#2a221b";
+				r.setAttribute("data-theme", d ? "light" : "dark");
+			};
+			window.addEventListener("hashchange", route);
+			route();
+		</script>
+	</body>
+</html>
